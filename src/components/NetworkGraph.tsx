@@ -1,32 +1,29 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
-import { useSelector } from "react-redux";
-
-// Define types for Node and Link
-interface Node {
-  id: string;
-  value: number;
-  label: string;
-  to: number | null;
-  from: number | null;
-  x?: number;
-  y?: number;
-  children?: Node[];
-}
-
-interface Link {
-  source: Node;
-  target: Node;
-}
+import { useSelector, useDispatch } from "react-redux";
+import {
+  nextStep,
+  previousStep,
+  setPlaying,
+  resetAnimation,
+  setSearchTarget,
+} from "../store";
 
 const NetworkGraph = () => {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const dispatch = useDispatch();
 
   const dataStructure = useSelector(
     (state: any) => state.algorithm.dataStructure
   );
-  const nodes: Node[] =
-    dataStructure[0]?.nodes.map((node: Node) => ({ ...node })) || [];
+  const nodes = dataStructure[0]?.nodes
+    ? JSON.parse(JSON.stringify(dataStructure[0].nodes))
+    : [];
+
+  const { animationSteps, currentStepIndex, isPlaying, animationSpeed } =
+    useSelector((state: any) => state.animation);
+
+  const [comparisonMessage, setComparisonMessage] = useState<string>("");
 
   const rootNode = nodes.find((n) => n.from === null);
   if (!rootNode) {
@@ -48,13 +45,31 @@ const NetworkGraph = () => {
     .id((d) => d.id)
     .parentId((d) => (d.from === null ? null : String(d.from)));
 
-  let treeData;
+  let hierarchyData;
   try {
-    treeData = stratify(nodes);
+    hierarchyData = stratify(nodes);
   } catch (error) {
     console.error("Stratify failed:", error);
     return null;
   }
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isPlaying && currentStepIndex < animationSteps.length - 1) {
+      timer = setTimeout(() => {
+        dispatch(nextStep());
+      }, animationSpeed);
+    } else if (isPlaying && currentStepIndex === animationSteps.length - 1) {
+      dispatch(setPlaying(false));
+    }
+    return () => clearTimeout(timer);
+  }, [
+    isPlaying,
+    currentStepIndex,
+    animationSteps.length,
+    animationSpeed,
+    dispatch,
+  ]);
 
   useEffect(() => {
     if (!svgRef.current || nodes.length === 0) return;
@@ -65,24 +80,22 @@ const NetworkGraph = () => {
 
     svg.selectAll("*").remove();
 
-    // Create the tree layout with dynamic size
-    const treeLayout = d3.tree<Node>().size([width, height - 100]);
-    const treeNodes = treeLayout(treeData);
+    const nodeSpacingX = 60;
+    const nodeSpacingY = 80;
+    const treeLayout = d3.tree<Node>().nodeSize([nodeSpacingX, nodeSpacingY]);
+    const treeNodes = treeLayout(hierarchyData);
 
-    // Calculate bounds to fit the tree, including node sizes and labels
-    const nodeRadius = (d: d3.HierarchyPointNode<Node>) => d.data.value * 5;
-    const labelWidthEstimate = 80;
-    const labelHeightEstimate = 20;
+    const nodeRadius = 10;
     const bounds = treeNodes.descendants().reduce(
       (acc, d) => {
-        const r = nodeRadius(d);
+        const r = nodeRadius;
         const x = d.x || 0;
         const y = d.y || 0;
         return {
-          minX: Math.min(acc.minX, x - r - labelWidthEstimate),
-          maxX: Math.max(acc.maxX, x + r + labelWidthEstimate),
-          minY: Math.min(acc.minY, y - r - labelHeightEstimate),
-          maxY: Math.max(acc.maxY, y + r + labelHeightEstimate),
+          minX: Math.min(acc.minX, x - r),
+          maxX: Math.max(acc.maxX, x + r),
+          minY: Math.min(acc.minY, y - r),
+          maxY: Math.max(acc.maxY, y + r),
         };
       },
       { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity }
@@ -91,7 +104,6 @@ const NetworkGraph = () => {
     const treeWidth = bounds.maxX - bounds.minX;
     const treeHeight = bounds.maxY - bounds.minY;
 
-    // Calculate initial zoom to fit the tree
     const padding = 50;
     const topOffset = 30;
     const scaleX = (width - 2 * padding) / treeWidth;
@@ -102,7 +114,6 @@ const NetworkGraph = () => {
 
     const g = svg.append("g");
 
-    // Apply initial zoom transform
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
@@ -117,10 +128,8 @@ const NetworkGraph = () => {
         d3.zoomIdentity.translate(translateX, translateY).scale(scale)
       );
 
-    // Create links
     const links = treeNodes.links();
-    const link = g
-      .selectAll(".link")
+    g.selectAll(".link")
       .data(links)
       .enter()
       .append("path")
@@ -132,30 +141,67 @@ const NetworkGraph = () => {
         const ty = d.target.y || 0;
         return `M${sx},${sy} L${tx},${ty}`;
       })
-      .attr("stroke", "#999")
+      .attr("stroke", (d) => {
+        if (currentStepIndex === -1) return "#999";
+        const step = animationSteps[currentStepIndex];
+        if (!step) return "#999";
+        const { remainingNodes } = step;
+        const sourceId = d.source.data.id;
+        const targetId = d.target.data.id;
+        const sourceInPath = remainingNodes.some(
+          (n: Node) => n.id === sourceId
+        );
+        const targetInPath = remainingNodes.some(
+          (n: Node) => n.id === targetId
+        );
+        return sourceInPath && targetInPath ? "#4caf50" : "#999";
+      })
       .attr("stroke-width", 2)
       .attr("fill", "none");
 
-    // Create nodes
     const node = g
       .selectAll(".node")
       .data(treeNodes.descendants())
       .enter()
       .append("g")
       .attr("class", "node")
-      .attr("transform", (d) => `translate(${d.x || 0},${d.y || 0})`)
-      .call(
-        d3
-          .drag<SVGGElement, d3.HierarchyPointNode<Node>>()
-          .on("start", dragstarted)
-          .on("drag", dragged)
-          .on("end", dragended)
-      );
+      .attr("transform", (d) => `translate(${d.x || 0},${d.y || 0})`);
+
+    let startPos: { x: number; y: number } | null = null;
+    const clickThreshold = 5;
 
     node
       .append("circle")
-      .attr("r", (d) => 10)
-      .attr("fill", "#69b3a2")
+      .attr("r", nodeRadius)
+      .attr("fill", (d) => {
+        if (currentStepIndex === -1) return "#69b3a2";
+        const step = animationSteps[currentStepIndex];
+        if (!step) return "#69b3a2";
+        const { currentNode, remainingNodes } = step;
+        if (currentNode && d.data.id === currentNode.id) return "#ff5722";
+        if (remainingNodes.some((n: Node) => n.id === d.data.id))
+          return "#4caf50";
+        return "#d3d3d3";
+      })
+      .on("mousedown", (event: MouseEvent) => {
+        startPos = { x: event.x, y: event.y };
+      })
+      .on("mouseup", (event: MouseEvent, d) => {
+        if (startPos) {
+          const dx = Math.abs(event.x - startPos.x);
+          const dy = Math.abs(event.y - startPos.y);
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < clickThreshold) {
+            dispatch(setSearchTarget(d.data.value));
+            console.log(`Set search target to: ${d.data.value}`);
+          }
+        }
+        startPos = null;
+      })
+      .on("click", (event: MouseEvent, d) => {
+        dispatch(setSearchTarget(d.data.value));
+        console.log(`Set search target to: ${d.data.value}`);
+      })
       .on("mouseover", function (event: MouseEvent, d) {
         d3.select(this).attr("fill", "#ff5722");
         tooltip.style("visibility", "visible").text(d.data.label);
@@ -165,20 +211,36 @@ const NetworkGraph = () => {
           .style("top", event.pageY - 10 + "px")
           .style("left", event.pageX + 10 + "px");
       })
-      .on("mouseout", function () {
-        d3.select(this).attr("fill", "#69b3a2");
+      .on("mouseout", function (event: MouseEvent, d) {
+        if (currentStepIndex === -1) {
+          d3.select(this).attr("fill", "#69b3a2");
+        } else {
+          const step = animationSteps[currentStepIndex];
+          if (!step) {
+            d3.select(this).attr("fill", "#69b3a2");
+          } else {
+            const { currentNode, remainingNodes } = step;
+            if (currentNode && d.data.id === currentNode.id) {
+              d3.select(this).attr("fill", "#ff5722");
+            } else if (remainingNodes.some((n: Node) => n.id === d.data.id)) {
+              d3.select(this).attr("fill", "#4caf50");
+            } else {
+              d3.select(this).attr("fill", "#d3d3d3");
+            }
+          }
+        }
         tooltip.style("visibility", "hidden");
       });
 
     node
       .append("text")
-      .attr("dx", 0) // Center horizontally
-      .attr("dy", ".35em") // Center vertically (slight adjustment)
-      .attr("text-anchor", "middle") // Ensure text is centered
-      .text((d) => d.data.value) // Show only the number (e.g., "1" instead of "Node 1")
-      .style("font-size", () => `12px`) // Scale font size with node radius
-      .style("fill", "white") // White text for contrast
-      .style("pointer-events", "none"); // Prevent text from interfering with drag/tooltip
+      .attr("dx", 0)
+      .attr("dy", ".35em")
+      .attr("text-anchor", "middle")
+      .text((d) => d.data.value)
+      .style("font-size", "12px")
+      .style("fill", "white")
+      .style("pointer-events", "none");
 
     const tooltip = d3
       .select("body")
@@ -190,40 +252,93 @@ const NetworkGraph = () => {
       .style("border", "1px solid #ccc")
       .style("padding", "5px");
 
+    if (currentStepIndex !== -1 && animationSteps[currentStepIndex]) {
+      const step = animationSteps[currentStepIndex];
+      const { currentNode, searchTarget } = step;
+      if (currentNode) {
+        if (currentNode.value === searchTarget) {
+          setComparisonMessage(`Found: ${searchTarget} = ${currentNode.value}`);
+        } else if (searchTarget < currentNode.value) {
+          setComparisonMessage(
+            `${searchTarget} < ${currentNode.value}: Go left`
+          );
+        } else {
+          setComparisonMessage(
+            `${searchTarget} > ${currentNode.value}: Go right`
+          );
+        }
+      } else {
+        setComparisonMessage(`Target ${searchTarget} not found`);
+      }
+    } else {
+      setComparisonMessage("");
+    }
+
     return () => {
       svg.selectAll("*").remove();
       tooltip.remove();
     };
-  }, [nodes]);
+  }, [nodes, currentStepIndex, animationSteps, dispatch, hierarchyData]);
 
-  return <svg ref={svgRef} width="100%" height="100vh" />;
+  const handlePlayPause = () => {
+    dispatch(setPlaying(!isPlaying));
+  };
+
+  const handleNext = () => {
+    dispatch(nextStep());
+    dispatch(setPlaying(false));
+  };
+
+  const handlePrevious = () => {
+    dispatch(previousStep());
+    dispatch(setPlaying(false));
+  };
+
+  const handleReset = () => {
+    dispatch(resetAnimation());
+    setComparisonMessage("");
+  };
+
+  return (
+    <>
+      <svg ref={svgRef} width="100%" height="100vh" />
+      <div
+        style={{ position: "absolute", bottom: 20, left: 20 }}
+        className="flex gap-2"
+      >
+        <button
+          className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+          onClick={handlePrevious}
+          disabled={currentStepIndex <= 0}
+        >
+          Previous
+        </button>
+        <button
+          className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+          onClick={handlePlayPause}
+        >
+          {isPlaying ? "Pause" : "Play"}
+        </button>
+        <button
+          className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+          onClick={handleNext}
+          disabled={currentStepIndex >= animationSteps.length - 1}
+        >
+          Next
+        </button>
+        <button
+          className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+          onClick={handleReset}
+        >
+          Reset
+        </button>
+        <span style={{ marginLeft: "10px" }}>
+          Step: {currentStepIndex + 1} / {animationSteps.length}
+        </span>
+        <span style={{ marginLeft: "10px" }}>{comparisonMessage}</span>
+      </div>
+    </>
+  );
 };
-
-// Drag functions
-function dragstarted(event: any, d: d3.HierarchyPointNode<Node>) {
-  d3.select(this).raise().attr("stroke", "black");
-}
-
-function dragged(event: any, d: d3.HierarchyPointNode<Node>) {
-  const width = window.innerWidth * 0.8;
-  const height = (window.innerHeight - 100) * 0.8;
-  d.x = Math.max(20, Math.min(width - 20, event.x));
-  d.y = Math.max(20, Math.min(height - 20, event.y));
-  d3.select(this).attr("transform", `translate(${d.x},${d.y})`);
-
-  d3.selectAll(".link")
-    .filter((l: any) => l.source.data === d.data || l.target.data === d.data)
-    .attr("d", (l: any) => {
-      const sx = l.source.data === d.data ? d.x : l.source.x || 0;
-      const sy = l.source.data === d.data ? d.y : l.source.y || 0;
-      const tx = l.target.data === d.data ? d.x : l.target.x || 0;
-      const ty = l.target.data === d.data ? d.y : l.target.y || 0;
-      return `M${sx},${sy} L${tx},${ty}`;
-    });
-}
-
-function dragended(event: any, d: d3.HierarchyPointNode<Node>) {
-  d3.select(this).attr("stroke", null);
-}
 
 export default NetworkGraph;
