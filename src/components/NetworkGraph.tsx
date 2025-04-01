@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import { useSelector, useDispatch } from "react-redux";
 import {
@@ -219,11 +219,11 @@ const NetworkGraph = () => {
         }
         startPos = null;
       })
-      .on("click", (event: MouseEvent, d) => {
+      .on("click", (_, d) => {
         dispatch(setSearchTarget(d.data.value));
         console.log(`Set search target to: ${d.data.value}`);
       })
-      .on("mouseover", function (event: MouseEvent, d) {
+      .on("mouseover", function (_, d) {
         d3.select(this).attr("fill", "#ff5722");
         tooltip.style("visibility", "visible").text(d.data.label);
       })
@@ -232,7 +232,7 @@ const NetworkGraph = () => {
           .style("top", event.pageY - 10 + "px")
           .style("left", event.pageX + 10 + "px");
       })
-      .on("mouseout", function (event: MouseEvent, d) {
+      .on("mouseout", function (_, d) {
         if (currentStepIndex === -1) {
           d3.select(this).attr("fill", "#69b3a2");
         } else {
