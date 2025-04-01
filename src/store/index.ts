@@ -127,6 +127,7 @@ const algorithmSlice = createSlice({
       state.algorithm = action.payload;
     },
     updateDataStructure: (state, action) => {
+      /**@ts-expect-error will take this up in the future*/
       state.dataStructure = generateBinaryTreeData(action.payload);
     },
     setSearchTarget: (state, action) => {
