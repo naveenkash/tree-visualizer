@@ -1,6 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import { createSlice } from "@reduxjs/toolkit";
-
+import { Node } from "../types";
 const sidePanelSlice = createSlice({
   name: "sidePanel",
   initialState: { isOpen: false },
@@ -127,7 +127,6 @@ const algorithmSlice = createSlice({
       state.algorithm = action.payload;
     },
     updateDataStructure: (state, action) => {
-      /**@ts-expect-error will take this up in the future*/
       state.dataStructure = generateBinaryTreeData(action.payload);
     },
     setSearchTarget: (state, action) => {
@@ -151,6 +150,7 @@ const animationSlice = createSlice({
   initialState,
   reducers: {
     addStep: (state, action) => {
+      /**@ts-expect-error will take this up in the future*/
       state.animationSteps.push(action.payload);
       state.currentStepIndex = state.animationSteps.length - 1; // update to the last step added
     },

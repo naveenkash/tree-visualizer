@@ -7,7 +7,11 @@ const AnimationSlider: React.FC = () => {
   const dispatch = useDispatch();
 
   const animationSpeed = useSelector(
-    (state: any) => state.animation.animationSpeed
+    (state: {
+      animation: {
+        animationSpeed: number;
+      };
+    }) => state.animation.animationSpeed
   );
 
   const handleSliderChange = (event: React.ChangeEvent<HTMLInputElement>) => {

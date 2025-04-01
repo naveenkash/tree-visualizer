@@ -15,14 +15,24 @@ interface Node {
   children?: Node[];
 }
 
-const BinaryTreeTraversalVisualizer: React.FC<{}> = () => {
+const BinaryTreeTraversalVisualizer: React.FC = () => {
   const dispatch = useDispatch();
   const animationSpeed = useSelector(
-    (state: any) => state.animation.animationSpeed
+    (state: {
+      animation: {
+        animationSpeed: number;
+      };
+    }) => state.animation.animationSpeed
   );
 
   const dataStructure = useSelector(
-    (state: any) => state.algorithm.dataStructure
+    (state: {
+      algorithm: {
+        dataStructure: {
+          nodes: Node[];
+        }[];
+      };
+    }) => state.algorithm.dataStructure
   );
   // Ensure a deep copy of nodes to avoid mutating the original state
   const nodes: Node[] = dataStructure[0]?.nodes

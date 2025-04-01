@@ -2,12 +2,18 @@
 import React from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { updateDataStructure } from "../store";
-
+import { Node } from "../types";
 const NodeSlider: React.FC = () => {
   const dispatch = useDispatch();
 
   const nodeCount = useSelector(
-    (state) => state.algorithm.dataStructure[0].nodes.length
+    (state: {
+      algorithm: {
+        dataStructure: {
+          nodes: Node[];
+        }[];
+      };
+    }) => state.algorithm.dataStructure[0].nodes.length
   );
 
   const handleSliderChange = (event: React.ChangeEvent<HTMLInputElement>) => {

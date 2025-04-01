@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import { useSelector, useDispatch } from "react-redux";
 import {
@@ -8,27 +8,49 @@ import {
   resetAnimation,
   setSearchTarget,
 } from "../store";
-
+import { Node } from "../types";
 const NetworkGraph = () => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dispatch = useDispatch();
 
   const dataStructure = useSelector(
-    (state: any) => state.algorithm.dataStructure
+    (state: {
+      algorithm: {
+        dataStructure: {
+          nodes: Node[];
+        }[];
+      };
+    }) => state.algorithm.dataStructure
   );
-  const nodes = dataStructure[0]?.nodes
-    ? JSON.parse(JSON.stringify(dataStructure[0].nodes))
-    : [];
+  const nodes: Node[] = useMemo(
+    () =>
+      dataStructure[0]?.nodes
+        ? JSON.parse(JSON.stringify(dataStructure[0].nodes))
+        : [],
+    [dataStructure]
+  );
 
   const { animationSteps, currentStepIndex, isPlaying, animationSpeed } =
-    useSelector((state: any) => state.animation);
+    useSelector(
+      (state: {
+        animation: {
+          animationSteps: {
+            currentNode: Node;
+            remainingNodes: Node[];
+            searchTarget: number;
+          }[];
+          currentStepIndex: number;
+          isPlaying: boolean;
+          animationSpeed: number;
+        };
+      }) => state.animation
+    );
 
   const [comparisonMessage, setComparisonMessage] = useState<string>("");
 
   const rootNode = nodes.find((n) => n.from === null);
   if (!rootNode) {
     console.error("No root node found (from: null)");
-    return null;
   }
 
   const nodeIds = new Set(nodes.map((n) => n.id));
@@ -37,7 +59,6 @@ const NetworkGraph = () => {
   );
   if (invalidNodes.length > 0) {
     console.error("Invalid 'from' references found:", invalidNodes);
-    return null;
   }
 
   const stratify = d3
@@ -45,16 +66,15 @@ const NetworkGraph = () => {
     .id((d) => d.id)
     .parentId((d) => (d.from === null ? null : String(d.from)));
 
-  let hierarchyData;
+  let hierarchyData: d3.HierarchyNode<Node> | null = null;
   try {
     hierarchyData = stratify(nodes);
   } catch (error) {
     console.error("Stratify failed:", error);
-    return null;
   }
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
     if (isPlaying && currentStepIndex < animationSteps.length - 1) {
       timer = setTimeout(() => {
         dispatch(nextStep());
@@ -83,6 +103,7 @@ const NetworkGraph = () => {
     const nodeSpacingX = 60;
     const nodeSpacingY = 80;
     const treeLayout = d3.tree<Node>().nodeSize([nodeSpacingX, nodeSpacingY]);
+    //@ts-expect-error will take this up in the future
     const treeNodes = treeLayout(hierarchyData);
 
     const nodeRadius = 10;

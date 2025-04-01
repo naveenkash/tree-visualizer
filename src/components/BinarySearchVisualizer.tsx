@@ -15,12 +15,24 @@ interface Node {
   children?: Node[];
 }
 
-const BinarySearchVisualizer: React.FC<{}> = () => {
+const BinarySearchVisualizer: React.FC = () => {
   const dispatch = useDispatch();
-  const target = useSelector((state: any) => state.algorithm.searchTarget);
+  const target = useSelector(
+    (state: {
+      algorithm: {
+        searchTarget: number;
+      };
+    }) => state.algorithm.searchTarget
+  );
 
   const dataStructure = useSelector(
-    (state: any) => state.algorithm.dataStructure
+    (state: {
+      algorithm: {
+        dataStructure: {
+          nodes: Node[];
+        }[];
+      };
+    }) => state.algorithm.dataStructure
   );
   // Ensure a deep copy of nodes to avoid mutating the original state
   const nodes: Node[] = dataStructure[0]?.nodes

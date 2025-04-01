@@ -6,7 +6,13 @@ import BinaryTreeTraversalVisualizer from "../components/BinaryTreeTraversalVisu
 import { useSelector } from "react-redux";
 import AnimationSlider from "../components/AnimationSlider";
 const Layout: React.FC = () => {
-  const isPlaying = useSelector((state: any) => state.animation.isPlaying);
+  const isPlaying = useSelector(
+    (state: {
+      animation: {
+        isPlaying: boolean;
+      };
+    }) => state.animation.isPlaying
+  );
   return (
     <div className="flex min-h-screen flex-col font-sans text-gray-800">
       {/* Topbar */}
